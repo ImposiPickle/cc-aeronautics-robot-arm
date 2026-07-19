@@ -55,6 +55,13 @@ end
 -- ---------------------------------------------------------------
 local function handleMove(senderId, msg)
     local target = msg.angle
+
+    -- If we have a swivel bearing to read from, trust its real angle
+    -- over our own locally-saved guess before computing the move --
+    -- this stops small errors from ever accumulating across moves.
+    local actual = gearshift.getActualAngle()
+    if actual then currentAngle = actual end
+
     local delta = shortestDelta(currentAngle, target)
 
     local ok, err = pcall(function()
@@ -62,7 +69,10 @@ local function handleMove(senderId, msg)
     end)
 
     if ok then
-        currentAngle = target
+        -- After moving, prefer the bearing's real angle again as the
+        -- value we report/persist, rather than our commanded target.
+        local finalAngle = gearshift.getActualAngle() or target
+        currentAngle = finalAngle
         saveState()
         rednet.send(senderId, { type = "ack", angle = currentAngle }, config.PROTOCOL)
     else
