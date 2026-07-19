@@ -20,29 +20,32 @@ config.MODEM_SIDE = nil
 config.IS_GRIPPER = false
 
 -- ---- Sequenced Gearshift hardware settings ----
--- The exact peripheral API for a Create Sequenced Gearshift depends on
--- your modpack/CC-Create bridge (vanilla Create does not expose one to
--- ComputerCraft on its own -- you likely need an addon, or you are
--- driving it via redstone). See joint/gearshift.lua for the two
--- implementations provided (PERIPHERAL and REDSTONE) and pick/adjust
--- the one that matches your setup.
-config.GEARSHIFT_MODE = "redstone" -- "redstone" or "peripheral"
-
--- --- redstone mode settings ---
--- Side facing the gearshift's redstone input (e.g. a Redstone Link or
--- a Rotation Speed Controller wired to accept pulses).
-config.REDSTONE_SIDE = "back"
--- How many degrees one pulse rotates the bearing. Calibrate this against
--- your actual gear ratio / Sequenced Gearshift program.
-config.DEGREES_PER_PULSE = 3.75  -- e.g. 96 pulses per full 360 rotation
-config.PULSE_LENGTH = 0.1        -- seconds the redstone signal stays high
-config.PULSE_GAP = 0.1           -- seconds between pulses
+-- Create (recent versions) exposes the Sequenced Gearshift directly as
+-- a CC:Tweaked peripheral -- no addon, no redstone hack needed. It must
+-- be placed directly adjacent to this computer (or connected via wired
+-- modem + network cable) for peripheral.wrap/peripheral.find to see it.
+-- See joint/gearshift.lua. A redstone-pulse fallback is also included
+-- for older setups where the peripheral isn't available.
+config.GEARSHIFT_MODE = "peripheral" -- "peripheral" (recommended) or "redstone"
 
 -- --- peripheral mode settings ---
--- Name/side of the peripheral, if your Create bridge exposes one
--- directly (e.g. peripheral.wrap("back")). Adjust method names inside
--- gearshift.lua's PERIPHERAL implementation to match your API.
+-- Side the Sequenced Gearshift is physically attached to (or nil to
+-- auto-detect the first "Create_SequencedGearshift"-type peripheral).
 config.PERIPHERAL_SIDE = "back"
+
+-- Whether positive angle deltas should be sent as modifier=1 or -1.
+-- If the joint moves backwards from what you commanded, flip this.
+config.INVERT_DIRECTION = false
+
+-- Timeout (seconds) to wait for isRunning() to go false before giving
+-- up on a move and reporting an error back to the Master.
+config.MOVE_TIMEOUT = 8
+
+-- --- redstone mode settings (fallback only) ---
+config.REDSTONE_SIDE = "back"
+config.DEGREES_PER_PULSE = 3.75
+config.PULSE_LENGTH = 0.1
+config.PULSE_GAP = 0.1
 
 -- File used to persist this joint's last known angle across reboots
 -- (so the joint computer can report its true position on boot even
