@@ -82,6 +82,17 @@ local function rotateRedstone(deltaDegrees)
     end
 end
 
+-- If a swivel_bearing peripheral is configured for this joint, returns
+-- its real current angle (degrees) straight from the game -- ground
+-- truth, not a locally-counted guess. Returns nil if not configured or
+-- not found.
+function gearshift.getActualAngle()
+    if not config.SWIVEL_PERIPHERAL_SIDE then return nil end
+    local p = peripheral.wrap(config.SWIVEL_PERIPHERAL_SIDE)
+    if not p or not p.getTargetAngle then return nil end
+    return p.getTargetAngle()
+end
+
 -- Rotates the bearing by `deltaDegrees` (positive/negative = direction).
 -- Blocks until the physical move should be complete.
 function gearshift.rotate(deltaDegrees)
