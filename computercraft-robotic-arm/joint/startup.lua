@@ -54,54 +54,48 @@ local currentAngle = 0
 -- in that direction, press any key to stop. Runs alongside the
 -- rednet move listener below -- handy for testing/calibrating RPM
 -- without needing the Master to be involved at all.
+--
+-- IMPORTANT: this issues ONE big rotate() call rather than repeated
+-- small chunks. Chunking causes a visible stop/restart pulse every
+-- chunk (Create decelerates to a full stop at the end of each
+-- instruction, then reaccelerates for the next one) -- a single call
+-- lets Create interpolate the motion smoothly the whole way, same as
+-- a normal move-to-target. "Stopping" works by issuing a new, tiny
+-- rotate() call, which overrides/interrupts whatever instruction is
+-- currently active. If this doesn't actually halt movement on your
+-- setup, tell me and we'll find another way to cancel it.
 -- ---------------------------------------------------------------
-local SPIN_CHUNK = 30 -- degrees per re-issued rotate() call while spinning
-                       -- (smaller = stops faster when toggled off, but
-                       -- more re-issue overhead; 30 is a reasonable middle)
+local SPIN_ANGLE = 100000 -- large enough to be "indefinite" in practice
 
 local spinning = false
 local spinDir = 1
 
-local function spinLoop()
-    while spinning do
-        gearshift.rotate(SPIN_CHUNK, spinDir)
-        while gearshift.isRunning() do
-            if not spinning then break end
-            sleep(0.05)
-        end
-    end
+local function startSpin(dir)
+    spinning = true
+    spinDir = dir
+    gearshift.rotate(SPIN_ANGLE, dir)
 end
 
-local function spinControlLoop()
-    while true do
-        local ev, key = os.pullEvent("key")
-        if not spinning then
-            if key == keys.up then
-                spinning = true
-                spinDir = 1
-                print("Free-spin: forward. Press any key to stop.")
-                return
-            elseif key == keys.down then
-                spinning = true
-                spinDir = -1
-                print("Free-spin: backward. Press any key to stop.")
-                return
-            end
-        else
-            spinning = false
-            print("Free-spin: stopped.")
-            return
-        end
-    end
+local function stopSpin()
+    spinning = false
+    gearshift.rotate(0.01, spinDir) -- tiny instruction overrides the running one
 end
 
 local function freeSpinManager()
     print("Press UP to spin forward, DOWN to spin backward, any key to stop.")
     while true do
-        if spinning then
-            parallel.waitForAny(spinLoop, spinControlLoop)
+        local ev, key = os.pullEvent("key")
+        if not spinning then
+            if key == keys.up then
+                print("Free-spin: forward.")
+                startSpin(1)
+            elseif key == keys.down then
+                print("Free-spin: backward.")
+                startSpin(-1)
+            end
         else
-            spinControlLoop()
+            print("Free-spin: stopped.")
+            stopSpin()
         end
     end
 end
