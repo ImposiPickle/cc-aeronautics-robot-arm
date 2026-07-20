@@ -49,45 +49,112 @@ print("Rednet open on '" .. peripheral.getName(modem) .. "', hosting as '" .. HO
 
 local currentAngle = 0
 
-while true do
-    local senderId, msg = rednet.receive(PROTOCOL)
-    if type(msg) == "table" and msg.type == "move" then
-        local target = msg.angle
-        local delta = ((target - currentAngle) % 360)
-        if delta > 180 then delta = delta - 360 end
+-- ---------------------------------------------------------------
+-- Free-spin mode: press an arrow key to start spinning continuously
+-- in that direction, press any key to stop. Runs alongside the
+-- rednet move listener below -- handy for testing/calibrating RPM
+-- without needing the Master to be involved at all.
+-- ---------------------------------------------------------------
+local SPIN_CHUNK = 30 -- degrees per re-issued rotate() call while spinning
+                       -- (smaller = stops faster when toggled off, but
+                       -- more re-issue overhead; 30 is a reasonable middle)
 
-        print("Moving base: " .. currentAngle .. " -> " .. target .. " (delta " .. delta .. ")")
+local spinning = false
+local spinDir = 1
 
-        local angle = math.abs(delta)
-        local dir = delta < 0 and -1 or 1
-
-        if angle > 0.01 then
-            gearshift.rotate(angle, dir)
-            while gearshift.isRunning() do sleep(0.1) end
-
-            -- isRunning() going false only means the GEARSHIFT's
-            -- instruction finished -- the assembled contraption's
-            -- actual angle can still be catching up for a moment.
-            -- Wait for it to settle before acking.
-            if bearing then
-                local lastReading = bearing.getTargetAngle()
-                local stableTicks = 0
-                local deadline = os.clock() + 5
-                while stableTicks < 3 and os.clock() < deadline do
-                    sleep(0.1)
-                    local reading = bearing.getTargetAngle()
-                    if math.abs(reading - lastReading) < 0.05 then
-                        stableTicks = stableTicks + 1
-                    else
-                        stableTicks = 0
-                    end
-                    lastReading = reading
-                end
-            end
+local function spinLoop()
+    while spinning do
+        gearshift.rotate(SPIN_CHUNK, spinDir)
+        while gearshift.isRunning() do
+            if not spinning then break end
+            sleep(0.05)
         end
-
-        currentAngle = target
-        print("Base now at " .. currentAngle)
-        rednet.send(senderId, { type = "ack", angle = currentAngle }, PROTOCOL)
     end
 end
+
+local function spinControlLoop()
+    while true do
+        local ev, key = os.pullEvent("key")
+        if not spinning then
+            if key == keys.up then
+                spinning = true
+                spinDir = 1
+                print("Free-spin: forward. Press any key to stop.")
+                return
+            elseif key == keys.down then
+                spinning = true
+                spinDir = -1
+                print("Free-spin: backward. Press any key to stop.")
+                return
+            end
+        else
+            spinning = false
+            print("Free-spin: stopped.")
+            return
+        end
+    end
+end
+
+local function freeSpinManager()
+    print("Press UP to spin forward, DOWN to spin backward, any key to stop.")
+    while true do
+        if spinning then
+            parallel.waitForAny(spinLoop, spinControlLoop)
+        else
+            spinControlLoop()
+        end
+    end
+end
+
+-- ---------------------------------------------------------------
+-- Rednet move listener (moves to an absolute target angle, as
+-- commanded by the Master). Note: if free-spin is active when a
+-- move command arrives, both will try to drive the gearshift at
+-- once -- stop free-spin before sending Master commands.
+-- ---------------------------------------------------------------
+local function rednetLoop()
+    while true do
+        local senderId, msg = rednet.receive(PROTOCOL)
+        if type(msg) == "table" and msg.type == "move" then
+            local target = msg.angle
+            local delta = ((target - currentAngle) % 360)
+            if delta > 180 then delta = delta - 360 end
+
+            print("Moving base: " .. currentAngle .. " -> " .. target .. " (delta " .. delta .. ")")
+
+            local angle = math.abs(delta)
+            local dir = delta < 0 and -1 or 1
+
+            if angle > 0.01 then
+                gearshift.rotate(angle, dir)
+                while gearshift.isRunning() do sleep(0.1) end
+
+                -- isRunning() going false only means the GEARSHIFT's
+                -- instruction finished -- the assembled contraption's
+                -- actual angle can still be catching up for a moment.
+                -- Wait for it to settle before acking.
+                if bearing then
+                    local lastReading = bearing.getTargetAngle()
+                    local stableTicks = 0
+                    local deadline = os.clock() + 5
+                    while stableTicks < 3 and os.clock() < deadline do
+                        sleep(0.1)
+                        local reading = bearing.getTargetAngle()
+                        if math.abs(reading - lastReading) < 0.05 then
+                            stableTicks = stableTicks + 1
+                        else
+                            stableTicks = 0
+                        end
+                        lastReading = reading
+                    end
+                end
+            end
+
+            currentAngle = target
+            print("Base now at " .. currentAngle)
+            rednet.send(senderId, { type = "ack", angle = currentAngle }, PROTOCOL)
+        end
+    end
+end
+
+parallel.waitForAny(rednetLoop, freeSpinManager)
