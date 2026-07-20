@@ -5,6 +5,13 @@ local GEARSHIFT_SIDE = "right"   -- confirmed from your `peripherals` output
 local PROTOCOL = "arm_control"
 local HOSTNAME = "joint_base"
 
+-- Chunking controls -- THESE are the actual "pulse" settings for this
+-- script. Each move is split into steps of at most CHUNK_DEGREES,
+-- with a pause of CHUNK_PAUSE seconds between each one so the
+-- assembled contraption has time to physically catch up.
+local CHUNK_DEGREES = 10   -- max degrees moved per rotate() call
+local CHUNK_PAUSE = 0.2    -- seconds paused between chunks
+
 local gearshift = peripheral.wrap(GEARSHIFT_SIDE)
 if not gearshift then error("No gearshift on side '" .. GEARSHIFT_SIDE .. "'") end
 
@@ -53,14 +60,19 @@ while true do
         local dir = delta < 0 and -1 or 1
 
         if angle > 0.01 then
-            gearshift.rotate(angle, dir)
-            while gearshift.isRunning() do sleep(0.1) end
+            local remaining = angle
+            while remaining > 0.01 do
+                local step = math.min(remaining, CHUNK_DEGREES)
+                gearshift.rotate(step, dir)
+                while gearshift.isRunning() do sleep(0.1) end
+                remaining = remaining - step
+                if remaining > 0.01 then sleep(CHUNK_PAUSE) end
+            end
 
             -- isRunning() going false only means the GEARSHIFT's
             -- instruction finished -- the assembled contraption's
             -- actual angle can still be catching up. Wait for it to
-            -- settle before acking, or the next command fires too
-            -- soon and you get exactly the "pulsing" you're seeing.
+            -- settle before acking.
             if bearing then
                 local lastReading = bearing.getTargetAngle()
                 local stableTicks = 0
