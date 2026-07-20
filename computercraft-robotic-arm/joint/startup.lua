@@ -8,6 +8,27 @@ local HOSTNAME = "joint_base"
 local gearshift = peripheral.wrap(GEARSHIFT_SIDE)
 if not gearshift then error("No gearshift on side '" .. GEARSHIFT_SIDE .. "'") end
 
+-- The Swivel Bearing must be ASSEMBLED (turned into a Simulated
+-- Contraption) before spinning it actually moves anything -- otherwise
+-- the input cog just spins freely with nothing attached to rotate.
+local bearing = peripheral.find("swivel_bearing")
+if bearing then
+    if bearing.isAssembled() then
+        print("Swivel bearing already assembled.")
+    else
+        print("Assembling swivel bearing...")
+        local ok, err = pcall(function() bearing.assemble() end)
+        if ok and bearing.isAssembled() then
+            print("Assembled successfully.")
+        else
+            print("Assembly failed: " .. tostring(bearing.getLastAssemblyException and bearing.getLastAssemblyException() or err))
+            print("Check nothing is blocking the arm's rotation path, then rerun startup.")
+        end
+    end
+else
+    print("WARNING: no swivel_bearing peripheral found -- rotation may spin freely with nothing attached.")
+end
+
 local modem = peripheral.find("modem", function(_, p) return p.isWireless and p.isWireless() end)
 if not modem then modem = peripheral.find("modem") end
 if not modem then error("No modem found") end
