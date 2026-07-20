@@ -35,10 +35,14 @@ local function findGearshift()
         return p
     end
 
+    -- Proven-working default: auto-detect, same as the reference
+    -- implementation this was checked against (`peripheral.find`
+    -- with no side needed at all for a directly-adjacent gearshift).
     local p = peripheral.find("Create_SequencedGearshift")
     if not p then
-        error("No Sequenced Gearshift peripheral found. Set config.PERIPHERAL_SIDE " ..
-            "explicitly, or make sure the gearshift is adjacent to this computer.")
+        error("No Sequenced Gearshift peripheral found. Make sure it's placed " ..
+            "directly against this computer (any face), or set config.PERIPHERAL_SIDE " ..
+            "explicitly if you have more than one and need to pick.")
     end
     return p
 end
@@ -82,13 +86,19 @@ local function rotateRedstone(deltaDegrees)
     end
 end
 
--- If a swivel_bearing peripheral is configured for this joint, returns
--- its real current angle (degrees) straight from the game -- ground
--- truth, not a locally-counted guess. Returns nil if not configured or
--- not found.
+-- If a swivel_bearing peripheral is present, returns its real current
+-- angle (degrees) straight from the game -- ground truth, not a
+-- locally-counted guess. Uses config.SWIVEL_PERIPHERAL_SIDE if set,
+-- otherwise auto-detects (matching the reference implementation's
+-- `peripheral.find("swivel_bearing")` pattern). Returns nil if none
+-- is found -- callers should fall back to the locally-persisted angle.
 function gearshift.getActualAngle()
-    if not config.SWIVEL_PERIPHERAL_SIDE then return nil end
-    local p = peripheral.wrap(config.SWIVEL_PERIPHERAL_SIDE)
+    local p
+    if config.SWIVEL_PERIPHERAL_SIDE then
+        p = peripheral.wrap(config.SWIVEL_PERIPHERAL_SIDE)
+    else
+        p = peripheral.find("swivel_bearing")
+    end
     if not p or not p.getTargetAngle then return nil end
     return p.getTargetAngle()
 end
