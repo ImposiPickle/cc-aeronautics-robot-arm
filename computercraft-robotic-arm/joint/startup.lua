@@ -55,6 +55,27 @@ while true do
         if angle > 0.01 then
             gearshift.rotate(angle, dir)
             while gearshift.isRunning() do sleep(0.1) end
+
+            -- isRunning() going false only means the GEARSHIFT's
+            -- instruction finished -- the assembled contraption's
+            -- actual angle can still be catching up. Wait for it to
+            -- settle before acking, or the next command fires too
+            -- soon and you get exactly the "pulsing" you're seeing.
+            if bearing then
+                local lastReading = bearing.getTargetAngle()
+                local stableTicks = 0
+                local deadline = os.clock() + 5
+                while stableTicks < 3 and os.clock() < deadline do
+                    sleep(0.1)
+                    local reading = bearing.getTargetAngle()
+                    if math.abs(reading - lastReading) < 0.05 then
+                        stableTicks = stableTicks + 1
+                    else
+                        stableTicks = 0
+                    end
+                    lastReading = reading
+                end
+            end
         end
 
         currentAngle = target
