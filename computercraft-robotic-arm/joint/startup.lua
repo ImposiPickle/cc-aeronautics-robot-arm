@@ -1,116 +1,43 @@
--- startup.lua (JOINT COMPUTER)
--- Runs on each individual joint computer. Listens for move/gripper
--- commands from the Master, drives the local gearshift, and reports
--- back. Never does any kinematics -- just local motor control.
+-- Minimal base-joint controller. No config file, no modules.
+-- Edit the two values below if needed, then save as startup.lua.
 
-package.path = "/?.lua;" .. package.path
+local GEARSHIFT_SIDE = "right"   -- confirmed from your `peripherals` output
+local PROTOCOL = "arm_control"
+local HOSTNAME = "joint_base"
 
-local config    = require("config")
-local gearshift = require("gearshift")
+local gearshift = peripheral.wrap(GEARSHIFT_SIDE)
+if not gearshift then error("No gearshift on side '" .. GEARSHIFT_SIDE .. "'") end
 
--- ---------------------------------------------------------------
--- Persisted current angle, so this joint remembers its position
--- across reboots even before the first command arrives.
--- ---------------------------------------------------------------
+local modem = peripheral.find("modem", function(_, p) return p.isWireless and p.isWireless() end)
+if not modem then modem = peripheral.find("modem") end
+if not modem then error("No modem found") end
+
+rednet.open(peripheral.getName(modem))
+rednet.host(PROTOCOL, HOSTNAME)
+print("Base joint online. Gearshift found on '" .. GEARSHIFT_SIDE .. "'.")
+print("Rednet open on '" .. peripheral.getName(modem) .. "', hosting as '" .. HOSTNAME .. "'")
+
 local currentAngle = 0
 
-local function loadState()
-    if fs.exists(config.STATE_FILE) then
-        local f = fs.open(config.STATE_FILE, "r")
-        local n = tonumber(f.readAll())
-        f.close()
-        if n then currentAngle = n end
-    end
-end
-
-local function saveState()
-    local f = fs.open(config.STATE_FILE, "w")
-    f.write(tostring(currentAngle))
-    f.close()
-end
-
--- ---------------------------------------------------------------
--- Networking
--- ---------------------------------------------------------------
-local function openModem()
-    local side = config.MODEM_SIDE
-    if not side then
-        local m = peripheral.find("modem")
-        if not m then error("No modem attached to this joint computer.") end
-        side = peripheral.getName(m)
-    end
-    rednet.open(side)
-    rednet.host(config.PROTOCOL, config.JOINT_NAME)
-end
-
--- Shortest signed delta in (-180, 180].
-local function shortestDelta(from, to)
-    local d = (to - from) % 360
-    if d > 180 then d = d - 360 end
-    return d
-end
-
--- ---------------------------------------------------------------
--- Command handling
--- ---------------------------------------------------------------
-local function handleMove(senderId, msg)
-    local target = msg.angle
-
-    -- If we have a swivel bearing to read from, trust its real angle
-    -- over our own locally-saved guess before computing the move --
-    -- this stops small errors from ever accumulating across moves.
-    local actual = gearshift.getActualAngle()
-    if actual then currentAngle = actual end
-
-    local delta = shortestDelta(currentAngle, target)
-
-    local ok, err = pcall(function()
-        gearshift.rotate(delta)
-    end)
-
-    if ok then
-        -- After moving, prefer the bearing's real angle again as the
-        -- value we report/persist, rather than our commanded target.
-        local finalAngle = gearshift.getActualAngle() or target
-        currentAngle = finalAngle
-        saveState()
-        rednet.send(senderId, { type = "ack", angle = currentAngle }, config.PROTOCOL)
-    else
-        rednet.send(senderId, { type = "error", reason = tostring(err) }, config.PROTOCOL)
-    end
-end
-
-local function handleGripper(senderId, msg)
-    local ok, err = pcall(function()
-        gearshift.setGripper(msg.state)
-    end)
-
-    if ok then
-        rednet.send(senderId, { type = "ack", state = msg.state }, config.PROTOCOL)
-    else
-        rednet.send(senderId, { type = "error", reason = tostring(err) }, config.PROTOCOL)
-    end
-end
-
--- ---------------------------------------------------------------
--- Main loop
--- ---------------------------------------------------------------
-loadState()
-openModem()
-
-print("Joint computer online: " .. config.JOINT_NAME)
-print("Current angle: " .. currentAngle)
-print("Waiting for commands from Master...")
-
 while true do
-    local senderId, msg = rednet.receive(config.PROTOCOL)
-    if type(msg) == "table" then
-        if msg.type == "move" and not config.IS_GRIPPER then
-            handleMove(senderId, msg)
-        elseif msg.type == "gripper" and config.IS_GRIPPER then
-            handleGripper(senderId, msg)
+    local senderId, msg = rednet.receive(PROTOCOL)
+    if type(msg) == "table" and msg.type == "move" then
+        local target = msg.angle
+        local delta = ((target - currentAngle) % 360)
+        if delta > 180 then delta = delta - 360 end
+
+        print("Moving base: " .. currentAngle .. " -> " .. target .. " (delta " .. delta .. ")")
+
+        local angle = math.abs(delta)
+        local dir = delta < 0 and -1 or 1
+
+        if angle > 0.01 then
+            gearshift.rotate(angle, dir)
+            while gearshift.isRunning() do sleep(0.1) end
         end
-        -- silently ignore anything else (e.g. move commands sent to the
-        -- gripper computer by mistake, or unrelated protocol traffic)
+
+        currentAngle = target
+        print("Base now at " .. currentAngle)
+        rednet.send(senderId, { type = "ack", angle = currentAngle }, PROTOCOL)
     end
 end
