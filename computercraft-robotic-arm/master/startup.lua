@@ -22,7 +22,8 @@ print("")
 
 parallel.waitForAny(
     function() renderer.loop(robot, kinematics) end,
-    function() ui.loop(robot, kinematics, renderer) end
+    function() ui.loop(robot, kinematics, renderer) end,
+    function() robot.pollActualAnglesLoop(2) end
 )
 
 print("Arm master stopped.")
