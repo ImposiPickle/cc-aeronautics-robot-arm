@@ -118,7 +118,7 @@ local function drawIsometric(robotState, kinematics)
     originY = math.floor(h * 0.65)
     scale = (viewW * 0.4) / math.max(maxReach, 1)
 
-    drawGrid(maxReach, 5)
+    drawGrid(maxReach, 3)
 
     local bx, by = worldToScreenIso(0, 0, 0)
     local ex, ey = worldToScreenIso(positions.elbow.x, positions.elbow.y, positions.elbow.z)
@@ -199,12 +199,16 @@ function renderer.draw(robotState, kinematics)
     drawStatus(robotState, kinematics, viewW)
 end
 
--- Runs forever, redrawing at ~20 FPS whenever robot state changes or on
--- a fixed tick, whichever comes first. Intended to be run inside
--- parallel.waitForAny alongside the UI loop.
+-- Runs forever, redrawing periodically. Intentionally NOT 20fps --
+-- real monitor peripherals are slow per-cell (each setCursorPos/write
+-- is a discrete peripheral call), and drawing hundreds of grid+arm
+-- cells that fast causes the next clear() to interrupt a frame before
+-- it finishes, which looks like a torn/"spotty" grid. A few frames per
+-- second is plenty for a status display that isn't meant to be smooth
+-- video anyway.
 function renderer.loop(robot, kinematics)
     renderer.init()
-    local FRAME_TIME = 0.05 -- ~20 FPS
+    local FRAME_TIME = 0.5 -- ~2 FPS
     while true do
         renderer.draw(robot.state, kinematics)
         sleep(FRAME_TIME)
