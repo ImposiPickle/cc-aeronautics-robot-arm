@@ -19,6 +19,10 @@ robot.state = {
         elbow = config.JOINTS.elbow.homeAngle,
         wrist = config.JOINTS.wrist.homeAngle,
     },
+    -- Live readback from each joint's bearing, refreshed periodically
+    -- (see robot.pollActualAngles below) independent of movement. nil
+    -- until the first successful poll for that joint.
+    actualAngles = {},
     gripper = "open",
     lengths = config.LINK_LENGTHS,
     busy = false,
@@ -141,6 +145,30 @@ function robot.closeGripper()
     if ok then robot.state.gripper = "closed" end
     notify()
     return ok, result
+end
+
+-- Queries every joint's REAL angle (read fresh from its bearing) and
+-- updates robot.state.actualAngles. Skips this while a move is in
+-- progress -- querying mid-move would just show a moving target and
+-- adds unnecessary rednet traffic during a time-sensitive operation.
+function robot.pollActualAngles()
+    if robot.state.busy then return end
+    for name in pairs(config.JOINTS) do
+        local ok, info = jointComms.queryStatus(name)
+        if ok and info.actualAngle then
+            robot.state.actualAngles[name] = info.actualAngle
+        end
+    end
+    notify()
+end
+
+-- Runs forever, polling actual angles every `intervalSeconds`. Intended
+-- to be run inside parallel.waitForAny alongside the renderer/UI loops.
+function robot.pollActualAnglesLoop(intervalSeconds)
+    while true do
+        robot.pollActualAngles()
+        sleep(intervalSeconds or 2)
+    end
 end
 
 return robot
