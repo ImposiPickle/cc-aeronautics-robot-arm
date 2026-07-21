@@ -100,6 +100,19 @@ local function handleGripper(senderId, msg)
     end
 end
 
+-- Lightweight query: report the REAL angle right now, straight from the
+-- bearing, without touching the gearshift at all. Doesn't move
+-- anything, doesn't block on isRunning()/settle -- safe to call any
+-- time, even mid-move, to check for drift.
+local function handleStatus(senderId, msg)
+    local actual = gearshift.getActualAngle()
+    rednet.send(senderId, {
+        type = "status",
+        actualAngle = actual,       -- nil if no swivel_bearing found
+        commandedAngle = currentAngle, -- this joint's own last-known target
+    }, config.PROTOCOL)
+end
+
 -- ---------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------
@@ -125,6 +138,8 @@ while true do
             handleMove(senderId, msg)
         elseif msg.type == "gripper" and config.IS_GRIPPER then
             handleGripper(senderId, msg)
+        elseif msg.type == "status" then
+            handleStatus(senderId, msg)
         end
         -- silently ignore anything else (e.g. move commands sent to the
         -- gripper computer by mistake, or unrelated protocol traffic)
