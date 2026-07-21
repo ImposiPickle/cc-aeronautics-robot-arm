@@ -124,4 +124,27 @@ function joint.setGripper(state)
     end
 end
 
+-- Lightweight query: asks a joint for its REAL angle right now (read
+-- fresh from its bearing), without commanding any movement. Safe to
+-- call even while other joints are mid-move. Returns
+-- true, {actualAngle=, commandedAngle=}  or  false, reason.
+function joint.queryStatus(jointName)
+    local id = resolve(jointName)
+    if not id then
+        return false, "joint '" .. jointName .. "' not found on network"
+    end
+
+    rednet.send(id, { type = "status" }, config.PROTOCOL)
+
+    local timer = os.startTimer(3)
+    while true do
+        local ev, p1, p2 = os.pullEvent()
+        if ev == "rednet_message" and p1 == id and type(p2) == "table" and p2.type == "status" then
+            return true, { actualAngle = p2.actualAngle, commandedAngle = p2.commandedAngle }
+        elseif ev == "timer" and p1 == timer then
+            return false, "timeout waiting for '" .. jointName .. "' status"
+        end
+    end
+end
+
 return joint
