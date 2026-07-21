@@ -48,22 +48,57 @@ joint/      -- copy this whole folder onto EACH joint computer
 
 ## About `joint/gearshift.lua`
 
-Sequenced Gearshifts in Create aren't natively exposed to ComputerCraft
-— there's no vanilla peripheral for "rotate to angle X." This file gives
-you two starting points:
+Recent versions of Create expose the Sequenced Gearshift **directly**
+as a CC:Tweaked peripheral — no addon required. This is the default
+(`GEARSHIFT_MODE = "peripheral"`):
 
-- **`redstone` mode** (default): pulses a redstone side some number of
-  times, where each pulse advances the gearshift by
-  `DEGREES_PER_PULSE`. Works with a Redstone Link or Rotation Speed
-  Controller wired to step the gearshift per pulse. You'll need to
-  calibrate `DEGREES_PER_PULSE` against your actual gear ratio.
-- **`peripheral` mode**: calls directly into a wrapped peripheral, for
-  setups using a Create/CC bridge addon. The method names in there are
-  placeholders — swap them for whatever your addon actually exposes.
+- `rotate(angle, [modifier])` — rotates by a positive number of
+  degrees; `modifier = -1` reverses direction.
+- `isRunning()` — true while the shaft is still turning.
 
-This is the one piece of the system whose exact implementation depends
-on hardware/addon choices outside a stock CC:Tweaked install, so it's
-intentionally isolated to a single, clearly-commented file.
+**Setup for peripheral mode:**
+- Place the computer directly adjacent to the Sequenced Gearshift (or
+  connect them over a wired modem network with network cable).
+- Set `PERIPHERAL_SIDE` in `joint/config.lua` to the face the gearshift
+  is on (or leave `nil` to auto-detect).
+- **Leave the gearshift's own instruction list empty.** A gearshift
+  currently linked to a computer ignores its programmed sequence — you
+  don't need to (and shouldn't) also program "Turn by Angle" /
+  "Await Redstone Signal" steps on it manually.
+- If the joint rotates the wrong way, flip `INVERT_DIRECTION` in that
+  joint's config rather than editing `gearshift.lua`.
+
+A `redstone` mode is also included as a fallback for older Create/CC
+versions where the peripheral isn't available — it pulses a redstone
+side, with the gearshift itself programmed to advance one step per
+pulse. This needs `DEGREES_PER_PULSE` calibrated to your build and only
+supports one rotation direction as written.
+
+## Swivel Bearing assembly (important, easy to miss)
+
+A Swivel Bearing must be **assembled** into a Simulated Contraption
+before rotating it moves anything physically attached — otherwise its
+input cog just spins freely with nothing to actually turn. `startup.lua`
+calls `gearshift.ensureBearingAssembled()` automatically on boot, which
+right-clicks it in code (`bearing.assemble()`) if it isn't assembled
+yet. If assembly keeps failing, check the console for the reason string
+it prints — usually something physically blocking the parts trying to
+become a contraption.
+
+Separately: the bearing only rotates the contraption when driven
+through the cog on its **side** — if a gearshift feeds into its
+*center* shaft instead, rotation passes straight through without
+turning the bearing itself.
+
+## Gearing/RPM matters more than code
+
+If a joint's motion pulses or stutters, that's very likely the kinetic
+input speed (RPM) reaching the gearshift being too high for the
+contraption to keep up with — not something to fix in software. Gear it
+down (Large Cogwheel reduction, or lower a Rotation Speed Controller /
+Creative Motor's target speed) rather than trying to chunk/throttle
+moves in Lua. A single `rotate()` call per move is correct and Create
+will interpolate the motion smoothly on its own at a sane RPM.
 
 ## Using it
 
