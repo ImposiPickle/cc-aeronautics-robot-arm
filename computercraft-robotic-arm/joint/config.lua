@@ -29,22 +29,25 @@ config.IS_GRIPPER = false
 config.GEARSHIFT_MODE = "peripheral" -- "peripheral" (recommended) or "redstone"
 
 -- --- peripheral mode settings ---
--- Side (or network name from `peripherals` / peripheral.getNames())
--- the Sequenced Gearshift is reachable at. Run `peripherals` on this
--- computer to see exactly what's attached and copy the name from there.
-config.PERIPHERAL_SIDE = "back"
+-- Side/network name the Sequenced Gearshift is reachable at. Leave nil
+-- to auto-detect via peripheral.find("Create_SequencedGearshift") --
+-- this is the proven-working default (confirmed against a working
+-- reference implementation) and avoids typos in a manually-set side.
+-- Only set this explicitly if you have more than one gearshift visible
+-- to this computer and need to disambiguate.
+config.PERIPHERAL_SIDE = nil
 
 -- Whether positive angle deltas should be sent as modifier=1 or -1.
 -- If the joint moves backwards from what you commanded, flip this.
 config.INVERT_DIRECTION = false
 
 -- Optional: side/network name of a swivel_bearing peripheral on this
--- same joint (Create: Aeronautics exposes these directly to CC). If
--- set, the joint computer reads the bearing's REAL angle via
--- getTargetAngle() after every move and reports that (not just its
--- own pulse-counted guess) back to the Master -- this stops any drift
--- from silently accumulating. Leave nil if you don't have one wired
--- to this joint, or the joint has no swivel_bearing peripheral.
+-- same joint (Create: Aeronautics exposes these directly to CC). Leave
+-- nil to auto-detect via peripheral.find("swivel_bearing") -- if found,
+-- the joint computer reads the bearing's REAL angle via getTargetAngle()
+-- before and after every move (not just its own pulse-counted guess),
+-- so drift never silently accumulates. If no swivel_bearing is found,
+-- it just falls back to the locally-persisted angle.
 config.SWIVEL_PERIPHERAL_SIDE = nil
 
 -- Timeout (seconds) to wait for isRunning() to go false before giving
