@@ -80,14 +80,18 @@ local function monitorClickLoop(robot, kinematics, renderer)
         local scale = (planW * 0.45) / math.max(maxReach, 1)
 
         if cx <= planW then
-            local worldX = (cx - originX) / scale
-            local worldZ = (cy - h * 0.5) / (scale * 0.5)
+            if robot.state.busy then
+                print("Ignoring click -- base is still moving. Wait for 'idle'.")
+            else
+                local worldX = (cx - originX) / scale
+                local worldZ = (cy - h * 0.5) / (scale * 0.5)
 
-            if math.abs(worldX) > 0.01 or math.abs(worldZ) > 0.01 then
-                local targetAngle = math.deg(math.atan2(worldZ, worldX))
-                renderer.setTarget({ x = worldX, y = 0, z = worldZ })
-                local ok, err = robot.moveJoint("base", targetAngle)
-                if not ok then print("base move failed: " .. tostring(err)) end
+                if math.abs(worldX) > 0.01 or math.abs(worldZ) > 0.01 then
+                    local targetAngle = math.deg(math.atan2(worldZ, worldX))
+                    renderer.setTarget({ x = worldX, y = 0, z = worldZ })
+                    local ok, err = robot.moveJoint("base", targetAngle)
+                    if not ok then print("base move failed: " .. tostring(err)) end
+                end
             end
         end
     end
