@@ -52,7 +52,12 @@ local function rotatePeripheral(deltaDegrees)
 
     local p = findGearshift()
 
-    local angle = math.floor(math.abs(deltaDegrees) + 0.5)
+    -- deltaDegrees is how far the BEARING needs to turn. Scale it by
+    -- GEAR_RATIO to get how far to command the GEARSHIFT itself to
+    -- turn, since there may be gearing (e.g. a Large Cogwheel) between
+    -- the two that changes the relationship.
+    local commandDegrees = deltaDegrees * config.GEAR_RATIO
+    local angle = math.floor(math.abs(commandDegrees) + 0.5)
     if angle == 0 then return end
 
     local modifier = deltaDegrees < 0 and -1 or 1
