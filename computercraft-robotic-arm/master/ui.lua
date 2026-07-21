@@ -1,5 +1,5 @@
 -- ui.lua (MASTER)
--- Keyboard jog control on the terminal, plus click-to-move on the
+-- Keyboard jog control on the terminal, plus click-to-aim-base on the
 -- monitor. Talks only to robot.lua's high-level API.
 
 local config = require("config")
@@ -26,7 +26,7 @@ local function printHelp()
     print("h          home all joints")
     print("s          save current pose (prompts for name)")
     print("q          quit UI (renderer keeps running)")
-    print("Click the monitor to move the end effector there")
+    print("Click the monitor to point the base at that direction")
     print("---------------------------------")
 end
 
@@ -64,9 +64,10 @@ local function keyboardLoop(robot)
 end
 
 -- Monitor click loop: converts a touch on the plan view back into a
--- world-space (x, z) coordinate at the current effector height, and
--- issues a moveTo. This mirrors the transform used in renderer.lua, so
--- if you change the renderer's projection, update this too.
+-- world-space (x, z) direction and rotates the base to point at it
+-- (aim only -- doesn't move shoulder/elbow/wrist). This mirrors the
+-- transform used in renderer.lua's plan view, so if you change that
+-- projection, update this too.
 local function monitorClickLoop(robot, kinematics, renderer)
     while true do
         local ev, side, cx, cy = os.pullEvent("monitor_touch")
@@ -81,10 +82,13 @@ local function monitorClickLoop(robot, kinematics, renderer)
         if cx <= planW then
             local worldX = (cx - originX) / scale
             local worldZ = (cy - h * 0.5) / (scale * 0.5)
-            local target = { x = worldX, y = robot.state.lengths.upperArm * 0.3, z = worldZ }
-            renderer.setTarget(target)
-            local ok, err = robot.moveTo(target.x, target.y, target.z)
-            if not ok then print("move failed: " .. tostring(err)) end
+
+            if math.abs(worldX) > 0.01 or math.abs(worldZ) > 0.01 then
+                local targetAngle = math.deg(math.atan2(worldZ, worldX))
+                renderer.setTarget({ x = worldX, y = 0, z = worldZ })
+                local ok, err = robot.moveJoint("base", targetAngle)
+                if not ok then print("base move failed: " .. tostring(err)) end
+            end
         end
     end
 end
