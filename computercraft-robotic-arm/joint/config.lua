@@ -41,6 +41,15 @@ config.PERIPHERAL_SIDE = nil
 -- If the joint moves backwards from what you commanded, flip this.
 config.INVERT_DIRECTION = false
 
+-- If there's a gear ratio between the Sequenced Gearshift's own output
+-- and the Swivel Bearing (e.g. a Large Cogwheel <-> Cogwheel pair),
+-- the bearing won't turn 1:1 with whatever angle you command via
+-- rotate(). Set this to: (degrees you have to tell rotate()) /
+-- (degrees the bearing actually ends up turning).
+-- e.g. if commanding rotate(90, ...) only turns the bearing 45
+-- degrees, GEAR_RATIO = 2. See README for how to calibrate this.
+config.GEAR_RATIO = 1
+
 -- Optional: side/network name of a swivel_bearing peripheral on this
 -- same joint (Create: Aeronautics exposes these directly to CC). Leave
 -- nil to auto-detect via peripheral.find("swivel_bearing") -- if found,
