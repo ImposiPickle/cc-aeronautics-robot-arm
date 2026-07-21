@@ -63,11 +63,14 @@ local function keyboardLoop(robot)
     end
 end
 
--- Monitor click loop: converts a touch on the plan view back into a
--- world-space (x, z) direction and rotates the base to point at it
--- (aim only -- doesn't move shoulder/elbow/wrist). This mirrors the
--- transform used in renderer.lua's plan view, so if you change that
--- projection, update this too.
+-- Monitor click loop: converts a touch on the isometric ground grid
+-- back into a world-space (x, z) direction and rotates the base to
+-- point at it (aim only -- doesn't move shoulder/elbow/wrist). This
+-- inverts the same isometric transform used in renderer.lua's ground
+-- grid, so if you change that projection, update this too.
+local ISO_COS = math.cos(math.rad(30))
+local ISO_SIN = math.sin(math.rad(30))
+
 local function monitorClickLoop(robot, kinematics, renderer)
     while true do
         local ev, side, cx, cy = os.pullEvent("monitor_touch")
@@ -75,16 +78,21 @@ local function monitorClickLoop(robot, kinematics, renderer)
         local maxReach = kinematics.maxReach(robot.state.lengths)
         local mon = peripheral.wrap(config.MONITOR_SIDE)
         local w, h = mon.getSize()
-        local planW = math.floor(w * 0.6)
-        local originX = math.floor(planW * 0.5)
-        local scale = (planW * 0.45) / math.max(maxReach, 1)
+        local viewW = math.floor(w * 0.65)
+        local originX = math.floor(viewW * 0.5)
+        local originY = math.floor(h * 0.65)
+        local scale = (viewW * 0.4) / math.max(maxReach, 1)
 
-        if cx <= planW then
+        if cx <= viewW then
             if robot.state.busy then
                 print("Ignoring click -- base is still moving. Wait for 'idle'.")
             else
-                local worldX = (cx - originX) / scale
-                local worldZ = (cy - h * 0.5) / (scale * 0.5)
+                -- Invert the ground-plane (y=0) isometric projection:
+                --   a = x - z, b = x + z  ->  x = (a+b)/2, z = (b-a)/2
+                local a = (cx - originX) / (ISO_COS * scale)
+                local b = (cy - originY) / (ISO_SIN * 0.5 * scale)
+                local worldX = (a + b) / 2
+                local worldZ = (b - a) / 2
 
                 if math.abs(worldX) > 0.01 or math.abs(worldZ) > 0.01 then
                     local targetAngle = math.deg(math.atan2(worldZ, worldX))
