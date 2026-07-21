@@ -169,10 +169,21 @@ local function drawStatus(robotState, kinematics, viewW)
 
     line_("== ARM STATUS ==", colors.white)
     row = row + 1
-    line_(string.format("base:     %6.1f", robotState.angles.base))
-    line_(string.format("shoulder: %6.1f", robotState.angles.shoulder))
-    line_(string.format("elbow:    %6.1f", robotState.angles.elbow))
-    line_(string.format("wrist:    %6.1f", robotState.angles.wrist))
+    local function angleLine(name, label)
+        local commanded = robotState.angles[name]
+        local actual = robotState.actualAngles and robotState.actualAngles[name]
+        if actual then
+            local diff = math.abs(actual - commanded)
+            local color = diff > 2 and colors.red or colors.white
+            line_(string.format("%-9s %6.1f  (actual %6.1f)", label .. ":", commanded, actual), color)
+        else
+            line_(string.format("%-9s %6.1f", label .. ":", commanded))
+        end
+    end
+    angleLine("base", "base")
+    angleLine("shoulder", "shoulder")
+    angleLine("elbow", "elbow")
+    angleLine("wrist", "wrist")
     row = row + 1
     line_(string.format("x: %6.2f", positions.effector.x))
     line_(string.format("y: %6.2f", positions.effector.y))
