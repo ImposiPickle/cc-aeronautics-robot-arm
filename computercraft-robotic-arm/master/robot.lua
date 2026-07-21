@@ -101,8 +101,15 @@ function robot.executeTrajectory(waypoints)
             notify()
             return false, robot.state.lastError
         end
-        for name, angle in pairs(pose) do
-            robot.state.angles[name] = angle
+        -- `info` here is moveMany's per-joint results table on success:
+        -- { jointName = { ok = true, info = <actual angle the joint
+        -- reported back, read from its bearing> }, ... }. Use THAT,
+        -- not the commanded pose value -- otherwise the Master's
+        -- tracked state just echoes what it asked for regardless of
+        -- where the joint actually ended up.
+        for name in pairs(pose) do
+            local reported = info[name] and info[name].info
+            robot.state.angles[name] = (type(reported) == "number") and reported or pose[name]
         end
         notify()
     end
