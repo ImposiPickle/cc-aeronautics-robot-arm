@@ -1,154 +1,132 @@
--- Minimal base-joint controller. No config file, no modules.
--- Edit the two values below if needed, then save as startup.lua.
+-- startup.lua (JOINT COMPUTER)
+-- Runs on each individual joint computer. Listens for move/gripper
+-- commands from the Master, drives the local gearshift, and reports
+-- back. Never does any kinematics -- just local motor control.
 
-local GEARSHIFT_SIDE = "right"   -- confirmed from your `peripherals` output
-local PROTOCOL = "arm_control"
-local HOSTNAME = "joint_base"
+package.path = "/?.lua;" .. package.path
 
--- No chunking here on purpose. A working reference implementation of
--- this exact setup does the whole move in ONE rotate() call and just
--- waits on isRunning() -- Create interpolates the contraption's motion
--- smoothly on its own. If movement pulses/stutters, that's the kinetic
--- input speed (RPM) being too high for the contraption to keep up with,
--- not something to work around in software -- gear it down instead
--- (Large Cogwheel reduction, or lower a Rotation Speed Controller /
--- Creative Motor's target speed).
+local config    = require("config")
+local gearshift = require("gearshift")
 
-local gearshift = peripheral.wrap(GEARSHIFT_SIDE)
-if not gearshift then error("No gearshift on side '" .. GEARSHIFT_SIDE .. "'") end
-
--- The Swivel Bearing must be ASSEMBLED (turned into a Simulated
--- Contraption) before spinning it actually moves anything -- otherwise
--- the input cog just spins freely with nothing attached to rotate.
-local bearing = peripheral.find("swivel_bearing")
-if bearing then
-    if bearing.isAssembled() then
-        print("Swivel bearing already assembled.")
-    else
-        print("Assembling swivel bearing...")
-        local ok, err = pcall(function() bearing.assemble() end)
-        if ok and bearing.isAssembled() then
-            print("Assembled successfully.")
-        else
-            print("Assembly failed: " .. tostring(bearing.getLastAssemblyException and bearing.getLastAssemblyException() or err))
-            print("Check nothing is blocking the arm's rotation path, then rerun startup.")
-        end
-    end
-else
-    print("WARNING: no swivel_bearing peripheral found -- rotation may spin freely with nothing attached.")
-end
-
-local modem = peripheral.find("modem", function(_, p) return p.isWireless and p.isWireless() end)
-if not modem then modem = peripheral.find("modem") end
-if not modem then error("No modem found") end
-
-rednet.open(peripheral.getName(modem))
-rednet.host(PROTOCOL, HOSTNAME)
-print("Base joint online. Gearshift found on '" .. GEARSHIFT_SIDE .. "'.")
-print("Rednet open on '" .. peripheral.getName(modem) .. "', hosting as '" .. HOSTNAME .. "'")
-
+-- ---------------------------------------------------------------
+-- Persisted current angle, so this joint remembers its position
+-- across reboots even before the first command arrives.
+-- ---------------------------------------------------------------
 local currentAngle = 0
 
--- ---------------------------------------------------------------
--- Free-spin mode: press an arrow key to start spinning continuously
--- in that direction, press any key to stop. Runs alongside the
--- rednet move listener below -- handy for testing/calibrating RPM
--- without needing the Master to be involved at all.
---
--- IMPORTANT: this issues ONE big rotate() call rather than repeated
--- small chunks. Chunking causes a visible stop/restart pulse every
--- chunk (Create decelerates to a full stop at the end of each
--- instruction, then reaccelerates for the next one) -- a single call
--- lets Create interpolate the motion smoothly the whole way, same as
--- a normal move-to-target. "Stopping" works by issuing a new, tiny
--- rotate() call, which overrides/interrupts whatever instruction is
--- currently active. If this doesn't actually halt movement on your
--- setup, tell me and we'll find another way to cancel it.
--- ---------------------------------------------------------------
-local SPIN_ANGLE = 100000 -- large enough to be "indefinite" in practice
-
-local spinning = false
-local spinDir = 1
-
-local function startSpin(dir)
-    spinning = true
-    spinDir = dir
-    gearshift.rotate(SPIN_ANGLE, dir)
+local function loadState()
+    if fs.exists(config.STATE_FILE) then
+        local f = fs.open(config.STATE_FILE, "r")
+        local n = tonumber(f.readAll())
+        f.close()
+        if n then currentAngle = n end
+    end
 end
 
-local function stopSpin()
-    spinning = false
-    gearshift.rotate(0.01, spinDir) -- tiny instruction overrides the running one
+local function saveState()
+    local f = fs.open(config.STATE_FILE, "w")
+    f.write(tostring(currentAngle))
+    f.close()
 end
 
-local function freeSpinManager()
-    print("Press UP to spin forward, DOWN to spin backward, any key to stop.")
-    while true do
-        local ev, key = os.pullEvent("key")
-        if not spinning then
-            if key == keys.up then
-                print("Free-spin: forward.")
-                startSpin(1)
-            elseif key == keys.down then
-                print("Free-spin: backward.")
-                startSpin(-1)
-            end
-        else
-            print("Free-spin: stopped.")
-            stopSpin()
+-- ---------------------------------------------------------------
+-- Networking
+-- ---------------------------------------------------------------
+local function openModem()
+    local side = config.MODEM_SIDE
+    if not side then
+        -- Prefer a wireless modem if there's more than one attached --
+        -- a wired modem (labeled "peripheral_hub" in `peripherals`)
+        -- only reaches other computers on the same cabled network, not
+        -- the Master over rednet wirelessly.
+        local m = peripheral.find("modem", function(name, p) return p.isWireless and p.isWireless() end)
+        if not m then
+            m = peripheral.find("modem")
         end
+        if not m then error("No modem attached to this joint computer.") end
+        side = peripheral.getName(m)
+    end
+    rednet.open(side)
+    rednet.host(config.PROTOCOL, config.JOINT_NAME)
+    print("rednet open on '" .. side .. "', hosting as '" .. config.JOINT_NAME .. "'")
+end
+
+-- Shortest signed delta in (-180, 180].
+local function shortestDelta(from, to)
+    local d = (to - from) % 360
+    if d > 180 then d = d - 360 end
+    return d
+end
+
+-- ---------------------------------------------------------------
+-- Command handling
+-- ---------------------------------------------------------------
+local function handleMove(senderId, msg)
+    local target = msg.angle
+
+    -- If we have a swivel bearing to read from, trust its real angle
+    -- over our own locally-saved guess before computing the move --
+    -- this stops small errors from ever accumulating across moves.
+    local actual = gearshift.getActualAngle()
+    if actual then currentAngle = actual end
+
+    local delta = shortestDelta(currentAngle, target)
+
+    local ok, err = pcall(function()
+        gearshift.rotate(delta)
+    end)
+
+    if ok then
+        -- After moving, prefer the bearing's real angle again as the
+        -- value we report/persist, rather than our commanded target.
+        local finalAngle = gearshift.getActualAngle() or target
+        currentAngle = finalAngle
+        saveState()
+        rednet.send(senderId, { type = "ack", angle = currentAngle }, config.PROTOCOL)
+    else
+        rednet.send(senderId, { type = "error", reason = tostring(err) }, config.PROTOCOL)
+    end
+end
+
+local function handleGripper(senderId, msg)
+    local ok, err = pcall(function()
+        gearshift.setGripper(msg.state)
+    end)
+
+    if ok then
+        rednet.send(senderId, { type = "ack", state = msg.state }, config.PROTOCOL)
+    else
+        rednet.send(senderId, { type = "error", reason = tostring(err) }, config.PROTOCOL)
     end
 end
 
 -- ---------------------------------------------------------------
--- Rednet move listener (moves to an absolute target angle, as
--- commanded by the Master). Note: if free-spin is active when a
--- move command arrives, both will try to drive the gearshift at
--- once -- stop free-spin before sending Master commands.
+-- Main loop
 -- ---------------------------------------------------------------
-local function rednetLoop()
-    while true do
-        local senderId, msg = rednet.receive(PROTOCOL)
-        if type(msg) == "table" and msg.type == "move" then
-            local target = msg.angle
-            local delta = ((target - currentAngle) % 360)
-            if delta > 180 then delta = delta - 360 end
+loadState()
+openModem()
 
-            print("Moving base: " .. currentAngle .. " -> " .. target .. " (delta " .. delta .. ")")
-
-            local angle = math.abs(delta)
-            local dir = delta < 0 and -1 or 1
-
-            if angle > 0.01 then
-                gearshift.rotate(angle, dir)
-                while gearshift.isRunning() do sleep(0.1) end
-
-                -- isRunning() going false only means the GEARSHIFT's
-                -- instruction finished -- the assembled contraption's
-                -- actual angle can still be catching up for a moment.
-                -- Wait for it to settle before acking.
-                if bearing then
-                    local lastReading = bearing.getTargetAngle()
-                    local stableTicks = 0
-                    local deadline = os.clock() + 5
-                    while stableTicks < 3 and os.clock() < deadline do
-                        sleep(0.1)
-                        local reading = bearing.getTargetAngle()
-                        if math.abs(reading - lastReading) < 0.05 then
-                            stableTicks = stableTicks + 1
-                        else
-                            stableTicks = 0
-                        end
-                        lastReading = reading
-                    end
-                end
-            end
-
-            currentAngle = target
-            print("Base now at " .. currentAngle)
-            rednet.send(senderId, { type = "ack", angle = currentAngle }, PROTOCOL)
-        end
-    end
+local assembled, reason = gearshift.ensureBearingAssembled()
+if assembled then
+    print("Swivel bearing: " .. reason)
+else
+    print("WARNING: swivel bearing not assembled (" .. reason .. ")")
+    print("Rotation may spin freely with nothing attached until this is fixed.")
 end
 
-parallel.waitForAny(rednetLoop, freeSpinManager)
+print("Joint computer online: " .. config.JOINT_NAME)
+print("Current angle: " .. currentAngle)
+print("Waiting for commands from Master...")
+
+while true do
+    local senderId, msg = rednet.receive(config.PROTOCOL)
+    if type(msg) == "table" then
+        if msg.type == "move" and not config.IS_GRIPPER then
+            handleMove(senderId, msg)
+        elseif msg.type == "gripper" and config.IS_GRIPPER then
+            handleGripper(senderId, msg)
+        end
+        -- silently ignore anything else (e.g. move commands sent to the
+        -- gripper computer by mistake, or unrelated protocol traffic)
+    end
+end
