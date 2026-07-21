@@ -77,10 +77,11 @@ local function rotatePeripheral(deltaDegrees)
 
     -- isRunning() only reflects the gearshift's own instruction state --
     -- the assembled contraption can still be catching up physically for
-    -- a moment after that. Wait briefly for the bearing's real angle to
-    -- settle, but capped much shorter than MOVE_TIMEOUT -- this is a
-    -- courtesy wait, not something that should ever double the timeout.
-    gearshift.waitForBearingSettle(2)
+    -- a moment after that (more so at higher rotation speeds). Wait for
+    -- the bearing's real angle to settle before reporting the move as
+    -- done -- capped comfortably under MOVE_TIMEOUT so this can't
+    -- itself cause a Master-side timeout.
+    gearshift.waitForBearingSettle(5)
 end
 
 -- ---------------------------------------------------------------
