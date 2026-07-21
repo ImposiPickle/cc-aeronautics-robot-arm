@@ -47,12 +47,16 @@ config.MONITOR_SIDE = "top"
 config.MOVE_TIMEOUT = 30
 
 -- Number of interpolation steps used by planner.lua when generating a
--- smooth trajectory between two poses. Higher = smoother, slower.
-config.TRAJECTORY_STEPS = 24
+-- smooth trajectory between two poses, for MULTI-JOINT moves only
+-- (robot.moveTo, robot.home) -- single-joint moves (robot.moveJoint)
+-- bypass the planner entirely and send one command. Kept low because
+-- each step is a real round-trip with settle-wait, not a free
+-- interpolation frame -- 24 steps could mean dozens of seconds.
+config.TRAJECTORY_STEPS = 4
 
 -- Maximum degrees any single joint may move in one trajectory step.
 -- The planner will add extra steps if a naive split would exceed this.
-config.MAX_STEP_DEGREES = 6
+config.MAX_STEP_DEGREES = 30
 
 -- File used by record.lua to persist saved poses across reboots.
 config.POSES_FILE = "poses.dat"
