@@ -69,6 +69,12 @@ local function rotatePeripheral(deltaDegrees)
         end
         sleep(0.1)
     end
+
+    -- isRunning() only reflects the gearshift's own instruction state --
+    -- the assembled contraption can still be catching up physically for
+    -- a moment after that. Wait for the bearing's real angle to settle
+    -- before we report the move as done.
+    gearshift.waitForBearingSettle(config.MOVE_TIMEOUT)
 end
 
 -- ---------------------------------------------------------------
@@ -93,14 +99,62 @@ end
 -- `peripheral.find("swivel_bearing")` pattern). Returns nil if none
 -- is found -- callers should fall back to the locally-persisted angle.
 function gearshift.getActualAngle()
-    local p
-    if config.SWIVEL_PERIPHERAL_SIDE then
-        p = peripheral.wrap(config.SWIVEL_PERIPHERAL_SIDE)
-    else
-        p = peripheral.find("swivel_bearing")
-    end
+    local p = gearshift.findBearing()
     if not p or not p.getTargetAngle then return nil end
     return p.getTargetAngle()
+end
+
+-- Returns the swivel_bearing peripheral for this joint, or nil.
+function gearshift.findBearing()
+    if config.SWIVEL_PERIPHERAL_SIDE then
+        return peripheral.wrap(config.SWIVEL_PERIPHERAL_SIDE)
+    end
+    return peripheral.find("swivel_bearing")
+end
+
+-- A Swivel Bearing must be ASSEMBLED into a Simulated Contraption
+-- before rotating it actually moves anything attached -- otherwise the
+-- input cog spins freely with nothing physically attached to turn.
+-- Call this once on startup. Returns true if assembled (or already
+-- was), false + a reason string otherwise.
+function gearshift.ensureBearingAssembled()
+    local bearing = gearshift.findBearing()
+    if not bearing then
+        return false, "no swivel_bearing peripheral found"
+    end
+    if bearing.isAssembled() then
+        return true, "already assembled"
+    end
+    local ok, err = pcall(function() bearing.assemble() end)
+    if ok and bearing.isAssembled() then
+        return true, "assembled"
+    end
+    local reason = (bearing.getLastAssemblyException and bearing.getLastAssemblyException()) or err
+    return false, tostring(reason)
+end
+
+-- Waits for the bearing's real angle to stop changing before
+-- returning. isRunning() going false only means the GEARSHIFT's
+-- instruction finished -- the assembled contraption's actual angle can
+-- still be catching up for a moment. Skips silently if no bearing is
+-- configured/found.
+function gearshift.waitForBearingSettle(timeoutSeconds)
+    local bearing = gearshift.findBearing()
+    if not bearing or not bearing.getTargetAngle then return end
+
+    local lastReading = bearing.getTargetAngle()
+    local stableTicks = 0
+    local deadline = os.clock() + (timeoutSeconds or 5)
+    while stableTicks < 3 and os.clock() < deadline do
+        sleep(0.1)
+        local reading = bearing.getTargetAngle()
+        if math.abs(reading - lastReading) < 0.05 then
+            stableTicks = stableTicks + 1
+        else
+            stableTicks = 0
+        end
+        lastReading = reading
+    end
 end
 
 -- Rotates the bearing by `deltaDegrees` (positive/negative = direction).
