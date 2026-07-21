@@ -44,7 +44,7 @@ config.MONITOR_SIDE = "top"
 
 -- How long (seconds) the master waits for a joint to ack a move before
 -- treating it as failed/stalled.
-config.MOVE_TIMEOUT = 10
+config.MOVE_TIMEOUT = 30
 
 -- Number of interpolation steps used by planner.lua when generating a
 -- smooth trajectory between two poses. Higher = smoother, slower.
