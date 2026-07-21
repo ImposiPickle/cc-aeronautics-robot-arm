@@ -57,8 +57,11 @@ local function clamp(jointName, angle)
     return angle
 end
 
--- Move a single named joint to an absolute angle (degrees), planned as
--- a smooth trajectory. Blocks until complete.
+-- Move a single named joint to an absolute angle (degrees). Sent as
+-- ONE command, not chunked through planner.lua -- Create interpolates
+-- the physical rotation smoothly on its own for a single joint, and
+-- chunking here only adds per-step round-trip overhead (and more
+-- chances for rounding error to accumulate). Blocks until complete.
 function robot.moveJoint(jointName, angle)
     if not config.JOINTS[jointName] then
         robot.state.lastError = "no such joint: " .. tostring(jointName)
@@ -66,10 +69,7 @@ function robot.moveJoint(jointName, angle)
     end
 
     local target = clamp(jointName, angle)
-    local startPose = { [jointName] = robot.state.angles[jointName] }
-    local endPose = { [jointName] = target }
-
-    return robot.executeTrajectory(planner.plan(startPose, endPose))
+    return robot.executeTrajectory({ { [jointName] = target } })
 end
 
 -- Move to a world-space target (x, y, z) via inverse kinematics, planned
