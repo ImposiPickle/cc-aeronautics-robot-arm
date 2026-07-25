@@ -22,6 +22,46 @@ local config = require("config")
 
 local gearshift = {}
 
+-- Runtime invert override -- takes precedence over config.INVERT_DIRECTION
+-- when set. Persisted to disk so a toggle survives a reboot. nil means
+-- "use config.INVERT_DIRECTION as-is".
+local INVERT_FILE = "invert_override.dat"
+local invertOverride = nil
+
+local function loadInvertOverride()
+    if fs.exists(INVERT_FILE) then
+        local f = fs.open(INVERT_FILE, "r")
+        local v = f.readAll()
+        f.close()
+        if v == "true" then invertOverride = true
+        elseif v == "false" then invertOverride = false end
+    end
+end
+loadInvertOverride()
+
+local function effectiveInvert()
+    if invertOverride ~= nil then return invertOverride end
+    return config.INVERT_DIRECTION
+end
+
+-- Sets (and persists) a runtime invert override. Pass nil to clear the
+-- override and go back to using config.INVERT_DIRECTION.
+function gearshift.setInvert(value)
+    invertOverride = value
+    local f = fs.open(INVERT_FILE, "w")
+    f.write(value == nil and "" or tostring(value))
+    f.close()
+end
+
+function gearshift.toggleInvert()
+    gearshift.setInvert(not effectiveInvert())
+    return effectiveInvert()
+end
+
+function gearshift.getInvert()
+    return effectiveInvert()
+end
+
 -- ---------------------------------------------------------------
 -- Peripheral implementation (recommended)
 -- ---------------------------------------------------------------
@@ -61,7 +101,7 @@ local function rotatePeripheral(deltaDegrees)
     if angle == 0 then return end
 
     local modifier = deltaDegrees < 0 and -1 or 1
-    if config.INVERT_DIRECTION then modifier = -modifier end
+    if effectiveInvert() then modifier = -modifier end
 
     p.rotate(angle, modifier)
 
