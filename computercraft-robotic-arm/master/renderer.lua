@@ -125,14 +125,31 @@ local function drawIsometric(robotState, kinematics)
     local wx, wy = worldToScreenIso(positions.wrist.x, positions.wrist.y, positions.wrist.z)
     local tx, ty = worldToScreenIso(positions.effector.x, positions.effector.y, positions.effector.z)
 
-    -- Dashed projection lines: red = horizontal offset (ground plane,
-    -- base to directly beneath the effector), green = height (straight
-    -- up from that ground point to the effector).
-    local groundX, groundY = worldToScreenIso(positions.effector.x, 0, positions.effector.z)
-    dashedLine(bx, by, groundX, groundY, colors.red, 2)
-    dashedLine(groundX, groundY, tx, ty, colors.lime, 2)
+    -- Ground shadow: the same skeleton projected flat onto the floor
+    -- (y=0). Drawn first, dim, so it sits "under" everything else --
+    -- this single addition does more for depth perception than
+    -- anything else here, since it gives every joint an anchor point
+    -- directly below it to judge height against.
+    local egx, egy = worldToScreenIso(positions.elbow.x, 0, positions.elbow.z)
+    local wgx, wgy = worldToScreenIso(positions.wrist.x, 0, positions.wrist.z)
+    local tgx, tgy = worldToScreenIso(positions.effector.x, 0, positions.effector.z)
+    line(bx, by, egx, egy, colors.gray)
+    line(egx, egy, wgx, wgy, colors.gray)
+    line(wgx, wgy, tgx, tgy, colors.gray)
 
-    -- Arm skeleton.
+    -- Vertical height guides: a light dotted line straight up from each
+    -- joint's ground shadow to the joint itself, so height is readable
+    -- at a glance for every segment, not just the tip.
+    dashedLine(egx, egy, ex, ey, colors.gray, 3)
+    dashedLine(wgx, wgy, wx, wy, colors.gray, 3)
+
+    -- Dashed projection lines for the EFFECTOR specifically: red =
+    -- horizontal offset (ground plane, base to directly beneath the
+    -- effector), green = height (straight up from that ground point).
+    dashedLine(bx, by, tgx, tgy, colors.red, 2)
+    dashedLine(tgx, tgy, tx, ty, colors.lime, 2)
+
+    -- Arm skeleton (drawn after the shadow/guides so it sits on top).
     line(bx, by, ex, ey, colors.lightBlue)
     line(ex, ey, wx, wy, colors.lightBlue)
     line(wx, wy, tx, ty, colors.lightBlue)
