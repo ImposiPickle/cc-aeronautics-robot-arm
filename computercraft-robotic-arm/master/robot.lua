@@ -92,7 +92,25 @@ end
 
 -- Runs a pre-built list of waypoints (see planner.lua), sending each one
 -- to all relevant joints in parallel and updating state as it goes.
+-- Runs a pre-built list of waypoints (see planner.lua), sending each one
+-- to all relevant joints in parallel and updating state as it goes.
+-- Before moving anything, checks the FINAL resulting pose for
+-- self-collision (this is the one place all move paths --
+-- moveJoint/moveTo/home -- funnel through, so it's checked no matter
+-- how the trajectory was built).
 function robot.executeTrajectory(waypoints)
+    if #waypoints > 0 then
+        local finalPose = {}
+        for name, angle in pairs(robot.state.angles) do finalPose[name] = angle end
+        for name, angle in pairs(waypoints[#waypoints]) do finalPose[name] = angle end
+
+        if kinematics.selfCollides(finalPose, robot.state.lengths) then
+            robot.state.lastError = "refused: resulting pose would collide with itself"
+            notify()
+            return false, robot.state.lastError
+        end
+    end
+
     robot.state.busy = true
     robot.state.lastError = nil
     notify()
@@ -169,6 +187,13 @@ function robot.pollActualAnglesLoop(intervalSeconds)
         robot.pollActualAngles()
         sleep(intervalSeconds or 2)
     end
+end
+
+-- Toggles (or explicitly sets) a joint's gearshift direction inversion
+-- at runtime -- use if a joint spins the wrong way relative to what
+-- was commanded, without editing that joint's config.lua and rebooting.
+function robot.toggleInvert(jointName)
+    return jointComms.setInvert(jointName)
 end
 
 return robot
