@@ -15,6 +15,7 @@ local KEY_DECREASE     = keys.down
 local KEY_GRIPPER      = keys.g
 local KEY_HOME         = keys.h
 local KEY_SAVE_POSE    = keys.s
+local KEY_INVERT       = keys.i
 local KEY_QUIT         = keys.q
 
 local function printHelp()
@@ -25,6 +26,7 @@ local function printHelp()
     print("g          toggle gripper")
     print("h          home all joints")
     print("s          save current pose (prompts for name)")
+    print("i          toggle direction inversion on selected joint")
     print("q          quit UI (renderer keeps running)")
     print("Click the monitor to point the base at that direction")
     print("---------------------------------")
@@ -55,6 +57,13 @@ local function keyboardLoop(robot)
                 local record = require("record")
                 record.save(name, robot.state.angles)
                 print("saved pose '" .. name .. "'")
+            end
+        elseif key == KEY_INVERT then
+            local ok, newValue = robot.toggleInvert(jointName)
+            if ok then
+                print(jointName .. " invert is now: " .. tostring(newValue))
+            else
+                print("invert toggle failed: " .. tostring(newValue))
             end
         elseif key == KEY_QUIT then
             print("UI stopped (renderer still running).")
