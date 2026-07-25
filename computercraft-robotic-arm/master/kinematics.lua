@@ -120,7 +120,40 @@ function kinematics.inverse(target, lengths, limits)
         end
     end
 
+    if kinematics.selfCollides(result, lengths) then
+        return nil, "resulting pose would collide with itself"
+    end
+
     return result
+end
+
+-- Returns true if the arm's own segments would cross each other in its
+-- vertical plane (checked independent of base rotation, since the
+-- chain's shape relative to itself is the same no matter which way the
+-- base points). Only the non-adjacent segment pair -- (shoulder->elbow)
+-- vs (wrist->effector) -- can properly cross for a 3-segment chain;
+-- adjacent segments share a joint and can't "intersect" in that sense.
+function kinematics.selfCollides(angles, lengths)
+    local shoulder = rad(angles.shoulder)
+    local elbowAbs = rad(angles.shoulder + angles.elbow)
+    local wristAbs = rad(angles.shoulder + angles.elbow + angles.wrist)
+
+    local p0 = { x = 0, y = 0 }
+    local p1 = { x = lengths.upperArm * math.cos(shoulder), y = lengths.upperArm * math.sin(shoulder) }
+    local p2 = { x = p1.x + lengths.forearm * math.cos(elbowAbs), y = p1.y + lengths.forearm * math.sin(elbowAbs) }
+    local p3 = { x = p2.x + lengths.wrist * math.cos(wristAbs), y = p2.y + lengths.wrist * math.sin(wristAbs) }
+
+    local function cross(o, a, b) return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x) end
+    local function segmentsIntersect(a1, a2, b1, b2)
+        local d1 = cross(b1, b2, a1)
+        local d2 = cross(b1, b2, a2)
+        local d3 = cross(a1, a2, b1)
+        local d4 = cross(a1, a2, b2)
+        return ((d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0)) and
+               ((d3 > 0 and d4 < 0) or (d3 < 0 and d4 > 0))
+    end
+
+    return segmentsIntersect(p0, p1, p2, p3)
 end
 
 return kinematics
