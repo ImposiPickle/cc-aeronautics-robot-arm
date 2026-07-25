@@ -113,6 +113,21 @@ local function handleStatus(senderId, msg)
     }, config.PROTOCOL)
 end
 
+-- Toggles or explicitly sets this joint's gearshift direction inversion
+-- at runtime (persisted, survives reboot) -- for when a joint's
+-- rotation direction doesn't line up with what was commanded, without
+-- needing to edit config.lua and reboot.
+local function handleInvert(senderId, msg)
+    local newValue
+    if msg.action == "toggle" then
+        newValue = gearshift.toggleInvert()
+    else
+        gearshift.setInvert(msg.value)
+        newValue = gearshift.getInvert()
+    end
+    rednet.send(senderId, { type = "ack", invert = newValue }, config.PROTOCOL)
+end
+
 -- ---------------------------------------------------------------
 -- Main loop
 -- ---------------------------------------------------------------
@@ -140,6 +155,8 @@ while true do
             handleGripper(senderId, msg)
         elseif msg.type == "status" then
             handleStatus(senderId, msg)
+        elseif msg.type == "invert" then
+            handleInvert(senderId, msg)
         end
         -- silently ignore anything else (e.g. move commands sent to the
         -- gripper computer by mistake, or unrelated protocol traffic)
