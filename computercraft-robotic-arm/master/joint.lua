@@ -147,4 +147,29 @@ function joint.queryStatus(jointName)
     end
 end
 
+-- Toggles (or explicitly sets) a joint's gearshift direction inversion
+-- at runtime -- use this if a joint spins the wrong way, instead of
+-- editing that joint's config.lua and rebooting it. Returns
+-- true, newInvertValue  or  false, reason.
+function joint.setInvert(jointName, value)
+    local id = resolve(jointName)
+    if not id then return false, "joint '" .. jointName .. "' not found on network" end
+
+    if value == nil then
+        rednet.send(id, { type = "invert", action = "toggle" }, config.PROTOCOL)
+    else
+        rednet.send(id, { type = "invert", action = "set", value = value }, config.PROTOCOL)
+    end
+
+    local timer = os.startTimer(3)
+    while true do
+        local ev, p1, p2 = os.pullEvent()
+        if ev == "rednet_message" and p1 == id and type(p2) == "table" and p2.type == "ack" then
+            return true, p2.invert
+        elseif ev == "timer" and p1 == timer then
+            return false, "timeout waiting for '" .. jointName .. "' invert ack"
+        end
+    end
+end
+
 return joint
